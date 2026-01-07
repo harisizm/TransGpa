@@ -302,7 +302,7 @@ export const AdminDashboard = () => {
     );
   }
 
-  if (error || !data) {
+  if (error || !data || !data.charts) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
         <div className="bg-white p-8 rounded-xl shadow-lg border border-red-100 text-center max-w-md">
@@ -310,7 +310,7 @@ export const AdminDashboard = () => {
             <Activity className="w-6 h-6" />
           </div>
           <h3 className="text-lg font-bold text-slate-900 mb-2">Analytics Unavailable</h3>
-          <p className="text-slate-500 text-sm mb-6">{error || "No data received from server."}</p>
+          <p className="text-slate-500 text-sm mb-6">{error || "Invalid response from server. Check API configuration."}</p>
           <button
             onClick={() => window.location.reload()}
             className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer text-sm font-medium"
