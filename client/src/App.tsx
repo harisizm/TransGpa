@@ -1,18 +1,37 @@
 import { useState, useEffect } from 'react';
+import { Routes, Route } from 'react-router-dom';
 import { Dropzone } from './components/Dropzone';
 import { TranscriptView } from './components/TranscriptView';
 import { type TranscriptData, extractTextFromPDF, parseTranscript } from './lib/pdf-parser';
 import { Loader2, ArrowUp, Github, Linkedin, Globe } from 'lucide-react';
+import { useTracking } from './hooks/useTracking';
+import { AdminDashboard } from './pages/AdminDashboard';
 
-function App() {
+function Home() {
   const [data, setData] = useState<TranscriptData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [activeSection, setActiveSection] = useState('top');
+
+  const { trackUpload, trackParseResult } = useTracking();
 
   useEffect(() => {
     const handleScroll = () => {
       setShowScrollTop(window.scrollY > 300);
+
+      const scrollPosition = window.scrollY + 100; // Offset for sticky header
+
+      const supportSection = document.getElementById('support');
+      const gradingSection = document.getElementById('grading-policy');
+
+      if (supportSection && supportSection.offsetTop <= scrollPosition + 200) { // +200 leeway
+        setActiveSection('support');
+      } else if (gradingSection && gradingSection.offsetTop <= scrollPosition + 100) {
+        setActiveSection('grading-policy');
+      } else {
+        setActiveSection('top');
+      }
     };
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
@@ -21,7 +40,14 @@ function App() {
   const scrollToSection = (id: string) => {
     const element = document.getElementById(id);
     if (element) {
-      element.scrollIntoView({ behavior: 'smooth' });
+      const headerOffset = 80;
+      const elementPosition = element.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth'
+      });
     }
   };
 
@@ -32,23 +58,30 @@ function App() {
   const handleFileUpload = async (file: File) => {
     setIsLoading(true);
     setError(null);
+    trackUpload(file);
+
     try {
       const text = await extractTextFromPDF(file);
       const parsedData = parseTranscript(text);
       if (parsedData.semesters.length === 0) {
-        throw new Error("Could not find any semester data. Please check the PDF format.");
+        throw new Error(
+          "Unrecognized format. Please upload the official University of Lahore transcript downloaded directly from the SAP Portal."
+        );
       }
       setData(parsedData);
+      trackParseResult(true, parsedData.semesters.reduce((acc, sem) => acc + sem.totalPoints, 0)); // passing total points as pageCount proxy or just ignoring for now
     } catch (err) {
       console.error(err);
       const msg = err instanceof Error ? err.message : "Failed to parse transcript.";
       setError(msg);
+      trackParseResult(false, 0, msg);
     } finally {
       setIsLoading(false);
     }
   };
 
   const startManualMode = () => {
+    scrollToTop();
     const initId = `future-sem-${Date.now()}`;
     setData({
       student: {
@@ -102,36 +135,45 @@ function App() {
           </div>
 
           <div className="flex-1 flex justify-center">
-            <nav className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-full border border-slate-200 shadow-sm backdrop-blur-sm">
+            <nav className="flex items-center gap-1 bg-slate-100/90 p-1.5 rounded-full border border-slate-200/50 shadow-sm backdrop-blur-md">
               <button
                 onClick={handleReset}
-                className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide rounded-full transition-all duration-300 cursor-pointer ${!data
-                  ? 'bg-white text-blue-600 shadow-sm ring-1 ring-slate-200'
-                  : 'text-slate-500 hover:text-slate-800 hover:bg-white/50'
+                className={`relative px-4 py-1.5 text-[11px] font-bold uppercase tracking-wide rounded-full transition-all duration-300 cursor-pointer overflow-hidden ${(activeSection === 'top' && !isManual) || !data
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-200 ring-1 ring-blue-500 scale-[1.02]'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
                   }`}
               >
-                Transcript Mode
+                <span className="relative z-10 flex items-center gap-1.5">
+                  Transcript Mode
+                  {!data && <span className="absolute inset-0 bg-blue-400/20 blur opacity-50 animate-pulse"></span>}
+                </span>
               </button>
               <button
                 onClick={startManualMode}
-                className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide rounded-full transition-all duration-300 cursor-pointer ${isManual
-                  ? 'bg-white text-purple-600 shadow-sm ring-1 ring-slate-200'
-                  : 'text-slate-500 hover:text-purple-600 hover:bg-white/50'
+                className={`px-4 py-1.5 text-[11px] font-bold uppercase tracking-wide rounded-full transition-all duration-300 cursor-pointer ${activeSection === 'top' && isManual
+                    ? 'bg-purple-600 text-white shadow-md shadow-purple-200 ring-1 ring-purple-500 scale-[1.02]'
+                    : 'text-slate-500 hover:text-purple-600 hover:bg-white/60'
                   }`}
               >
-                GPA Builder
+                GPA Calculator
               </button>
               {data && (
                 <button
                   onClick={() => scrollToSection('grading-policy')}
-                  className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500 hover:text-slate-800 hover:bg-white/50 rounded-full transition-all duration-300 cursor-pointer hidden sm:block"
+                  className={`px-4 py-1.5 text-[11px] font-bold uppercase tracking-wide rounded-full transition-all duration-300 cursor-pointer hidden sm:block ${activeSection === 'grading-policy'
+                      ? 'bg-purple-600 text-white shadow-md shadow-purple-200 ring-1 ring-purple-500 scale-[1.02]'
+                      : 'text-slate-500 hover:text-slate-900 hover:bg-white/80'
+                    }`}
                 >
                   Grading Criteria
                 </button>
               )}
               <button
                 onClick={() => scrollToSection('support')}
-                className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500 hover:text-slate-800 hover:bg-white/50 rounded-full transition-all duration-300 cursor-pointer"
+                className={`px-4 py-1.5 text-[11px] font-bold uppercase tracking-wide rounded-full transition-all duration-300 cursor-pointer ${activeSection === 'support'
+                    ? 'bg-purple-600 text-white shadow-md shadow-purple-200 ring-1 ring-purple-500 scale-[1.02]'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-white/80'
+                  }`}
               >
                 Support
               </button>
@@ -139,9 +181,10 @@ function App() {
           </div>
 
           <div className="w-1/4 flex justify-end">
-            <a href="#support" className="text-[10px] font-medium text-slate-400 hover:text-blue-600 transition-colors">
+            {/* Admin Link for convenience (hidden or explicit, user asked for /admin url, so I can add a secret link or just let them type it. I'll leave it hidden as per typical reqs unless asked) */}
+            <span className="text-[10px] font-medium text-slate-400 cursor-default">
               v1.0.0
-            </a>
+            </span>
           </div>
         </div>
       </header>
@@ -182,7 +225,7 @@ function App() {
               >
                 <div className="w-2 h-2 rounded-full bg-purple-500 group-hover:animate-pulse" />
                 <span className="text-sm font-bold text-slate-600 group-hover:text-purple-700">
-                  Enter GPA Builder
+                  Enter GPA Calculator
                 </span>
               </button>
             </div>
@@ -193,7 +236,7 @@ function App() {
                 <div className="text-xs opacity-90 font-mono text-left whitespace-pre-wrap max-h-96 overflow-y-auto bg-white p-4 rounded border border-red-200 select-text">
                   {error}
                 </div>
-                <p className="text-xs mt-2 text-slate-500">Please copy the text above and share it with support.</p>
+                <p className="text-xs mt-2 text-slate-500">Please copy the text above and share it with the Developer.</p>
               </div>
             )}
           </div>
@@ -220,12 +263,12 @@ function App() {
 
               <div className="flex flex-col gap-4 text-slate-300 text-sm md:text-base leading-relaxed max-w-2xl mx-auto">
                 <p>
-                  TransGPA is a powerful, client-side academic tool designed to help students visualize and plan their educational journey.
-                  By parsing standard PDF transcripts directly in your browser, it transforms static data into an interactive dashboard,
-                  allowing for real-time grade simulation, future GPA projection, and in-depth performance analytics.
+                  TransGPA is a powerful academic tool designed to help UOL students visualize and plan their educational journey.
+                  By processing your PDF transcripts directly in your browser, it transforms the way you planned your grade,
+                  allowing for real-time Transcript Edits, future GPA projection, and in-depth performance analytics.
                 </p>
                 <p>
-                  Built with privacy as a priority, all processing happens locally on your device—your academic data never leaves your browser.
+                  Built with privacy as a priority, all processing happens locally on your device. Your personal data never leaves your browser.
                 </p>
               </div>
 
@@ -285,6 +328,15 @@ function App() {
         </div>
       </footer>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<Home />} />
+      <Route path="/admin" element={<AdminDashboard />} />
+    </Routes>
   );
 }
 

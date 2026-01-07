@@ -186,7 +186,7 @@ export function TranscriptView({ data, onReset }: TranscriptViewProps) {
             </>
           ) : (
             <div className="bg-white p-6 border border-slate-300 shadow-sm text-center">
-              <h1 className="text-3xl font-black text-slate-900 tracking-tight uppercase">GPA Builder</h1>
+              <h1 className="text-3xl font-black text-slate-900 tracking-tight uppercase">GPA Calculator</h1>
               <p className="text-slate-500 text-xs mt-1 font-medium">Design your dream GPA. Add semesters, simulate grades, and see the future.</p>
             </div>
           )}

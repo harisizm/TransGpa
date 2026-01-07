@@ -53,7 +53,7 @@ export function Dropzone({ onFileSelect }: DropzoneProps) {
     <div className="w-full max-w-2xl mx-auto">
       <div
         className={cn(
-          "relative border-2 border-dashed rounded-xl p-12 transition-all duration-300 ease-in-out flex flex-col items-center justify-center text-center cursor-pointer",
+          "relative border-2 border-dashed rounded-xl p-6 transition-all duration-300 ease-in-out flex flex-col items-center justify-center text-center cursor-pointer",
           isDragActive
             ? "border-blue-500 bg-blue-50/50 scale-[1.02]"
             : "border-slate-300 hover:border-slate-400 bg-white hover:bg-slate-50",
@@ -71,17 +71,17 @@ export function Dropzone({ onFileSelect }: DropzoneProps) {
           onChange={handleChange}
         />
 
-        <div className="bg-blue-100 p-4 rounded-full mb-4">
-          <Upload className={cn("w-8 h-8 text-blue-600", isDragActive && "animate-bounce")} />
+        <div className="bg-blue-100 p-3 rounded-full mb-3">
+          <Upload className={cn("w-6 h-6 text-blue-600", isDragActive && "animate-bounce")} />
         </div>
 
-        <h3 className="text-xl font-semibold text-slate-800 mb-2">
+        <h3 className="text-lg font-semibold text-slate-800 mb-1">
           Upload your Transcript
         </h3>
-        <p className="text-slate-500 mb-6 max-w-sm">
+        <p className="text-slate-500 mb-2 max-w-sm text-sm">
           Drag and drop your PDF transcript here, or click to browse.
           <br />
-          <span className="text-xs text-slate-400 mt-2 block">
+          <span className="text-[10px] text-slate-400 mt-1 block">
             We process files locally. Your data never leaves your device.
           </span>
         </p>
