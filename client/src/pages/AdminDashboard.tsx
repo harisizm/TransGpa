@@ -549,9 +549,14 @@ export const AdminDashboard = () => {
                       <td className="px-6 py-3 text-slate-600">
                         {upload.location?.country || 'Unknown'}
                       </td>
-                      <td className="px-6 py-3 text-slate-500 text-xs whitespace-nowrap">
-                        {new Date(upload.timestamp).toLocaleString()}
-                      </td>
+                      {new Date(upload.timestamp).toLocaleString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: 'numeric',
+                        hour12: true
+                      })}
                     </tr>
                   ))}
                 </tbody>
