@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5000/api/metrics';
+const API_URL = '/api/metrics';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -28,17 +28,17 @@ export const getDashboardMetrics = async () => {
 
 export const getAdminAnalytics = async () => {
   // Use direct axios call to avoid /api/metrics base path
-  const response = await axios.get('http://localhost:5000/api/admin/analytics');
+  const response = await axios.get('/api/admin/analytics');
   return response.data;
 };
 
 export const getPaginatedUploads = async (params: { page: number; limit: number; search: string; sortBy: string; sortOrder: 'asc' | 'desc' }) => {
-  const response = await axios.get('http://localhost:5000/api/admin/analytics/uploads', { params });
+  const response = await axios.get('/api/admin/analytics/uploads', { params });
   return response.data;
 };
 
 export const getReportData = async (startDate: string, endDate: string) => {
-  const response = await axios.get('http://localhost:5000/api/admin/analytics/report', {
+  const response = await axios.get('/api/admin/analytics/report', {
     params: { startDate, endDate }
   });
   return response.data;
