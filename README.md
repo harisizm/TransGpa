@@ -2,8 +2,7 @@
 
 **TransGPA** is a powerful academic tool designed to help students visualize, plan, and optimize their educational journey. It transforms static transcript PDFs into dynamic, interactive dashboards, empowering students to take control of their CGPA.
 
-![TransGPA Banner](https://via.placeholder.com/1200x600?text=TransGPA+Dashboard+Preview) 
-*(Replace with actual screenshot)*
+![App Screenshot](client/assets/ss.png)
 
 ## 🚀 The Problem
 University transcripts are often static PDF documents. They tell you *what happened*, but they don't help you plan *what's next*. Students struggle to answer simple questions like:
