@@ -36,7 +36,7 @@ router.get('/uploads', async (req: Request, res: Response) => {
       .sort({ [sortBy]: sortOrder })
       .skip((page - 1) * limit)
       .limit(limit)
-      .select('userId timestamp metadata location');
+      .select('userId timestamp metadata');
 
     res.json({
       data: uploads,
@@ -109,14 +109,6 @@ router.get('/report', async (req: Request, res: Response) => {
       { $sort: { date: 1 } }
     ]);
 
-    // 3. Top Locations in Range
-    const topLocations = await Metric.aggregate([
-      { $match: { ...rangeMatch, "location.country": { $ne: null } } },
-      { $group: { _id: "$userId", country: { $first: "$location.country" } } },
-      { $group: { _id: "$country", users: { $sum: 1 } } },
-      { $sort: { users: -1 } },
-      { $limit: 5 }
-    ]);
 
     res.json({
       period: { start: startObj, end: endObj },
@@ -127,7 +119,6 @@ router.get('/report', async (req: Request, res: Response) => {
         totalErrors: failCount
       },
       daily: dailyStats,
-      locations: topLocations
     });
   } catch (error) {
     console.error('Report Generation Error:', error);
@@ -251,20 +242,12 @@ router.get('/', async (req: Request, res: Response) => {
 
     const sessionStats = sessionAgg[0] || { avgDuration: 0, avgUploads: 0 };
 
-    // 6. Top Locations
-    const topCountries = await Metric.aggregate([
-      { $match: { "location.country": { $ne: null } } },
-      { $group: { _id: "$userId", country: { $first: "$location.country" } } }, // Distinct user's country (approx)
-      { $group: { _id: "$country", users: { $sum: 1 } } },
-      { $sort: { users: -1 } },
-      { $limit: 10 }
-    ]);
 
     // 7. Recent Uploads Table
     const recentUploads = await Metric.find({ eventType: 'UPLOAD' })
       .sort({ timestamp: -1 })
       .limit(20)
-      .select('userId timestamp metadata location');
+      .select('userId timestamp metadata');
 
     // 8. File Type Distribution
     const fileTypes = await Metric.aggregate([
@@ -288,12 +271,72 @@ router.get('/', async (req: Request, res: Response) => {
       },
       tables: {
         recentUploads,
-        topCountries
       }
     });
 
   } catch (error) {
     console.error('Analytics Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// @route   DELETE /api/admin/analytics/uploads
+// @desc    Delete specific upload records
+// @access  Public (Protected by Admin Auth on frontend)
+router.delete('/uploads', async (req: Request, res: Response) => {
+  try {
+    const { ids, cascade } = req.body;
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'No IDs provided' });
+    }
+
+    let deletedCount = 0;
+
+    if (cascade) {
+      // 1. Find the users associated with these uploads
+      const uploads = await Metric.find({ _id: { $in: ids } }).select('userId');
+      const userIds = [...new Set(uploads.map(u => u.userId))]; // Distinct IDs
+
+      if (userIds.length > 0) {
+        // 2. Delete ALL records for these users
+        const result = await Metric.deleteMany({ userId: { $in: userIds } });
+        deletedCount = result.deletedCount;
+      }
+    } else {
+      // Standard delete: Only delete the selected upload records
+      const result = await Metric.deleteMany({ _id: { $in: ids } });
+      deletedCount = result.deletedCount;
+    }
+
+    res.json({
+      message: `Successfully deleted records`,
+      deletedCount
+    });
+  } catch (error) {
+    console.error('Delete Uploads Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// @route   POST /api/admin/analytics/cleanup
+// @desc    Remove users with 0 uploads (Orphans)
+// @access  Public (Protected by Admin Auth on frontend)
+router.post('/cleanup', async (req: Request, res: Response) => {
+  try {
+    // 1. Get all user IDs who have at least one upload
+    const uploadUsers = await Metric.distinct('userId', { eventType: 'UPLOAD' });
+
+    // 2. Delete all metrics where userId is NOT in the uploadUsers list
+    // This removes users who visited but never intentionally uploaded anything (or whose uploads were deleted)
+    const result = await Metric.deleteMany({ userId: { $nin: uploadUsers } });
+
+    res.json({
+      message: `Cleanup complete. Removed ${result.deletedCount} orphan records.`,
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    console.error('Cleanup Error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });

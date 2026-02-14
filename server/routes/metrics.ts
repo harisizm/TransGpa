@@ -1,7 +1,6 @@
 import express, { Request, Response } from 'express';
 import Metric from '../models/Metric.js';
 import axios from 'axios';
-import geoip from 'geoip-lite';
 import { UAParser } from 'ua-parser-js';
 
 const router = express.Router();
@@ -12,6 +11,14 @@ const router = express.Router();
 router.post('/track', async (req: Request, res: Response) => {
   try {
     const { userId, sessionId, eventType, metadata } = req.body;
+
+    // Debug: Log incoming track request to verify metadata
+    if (eventType === 'UPLOAD') {
+      console.log('------------------------------------------------');
+      console.log('Incoming TRACK Request (UPLOAD)');
+      console.log('Metadata Receiver:', JSON.stringify(metadata, null, 2));
+      console.log('------------------------------------------------');
+    }
     let ip = req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || '';
 
     // Normalize IP
@@ -22,14 +29,15 @@ router.post('/track', async (req: Request, res: Response) => {
     // If localhost, try to resolve real public IP for accurate geolocation
     if (ip === '127.0.0.1' || ip === '::1') {
       try {
-        const publicIpRes = await axios.get('https://api64.ipify.org?format=json');
-        ip = publicIpRes.data.ip;
+        const publicIpRes = await axios.get('https://api64.ipify.org?format=json', { timeout: 2000 });
+        if (publicIpRes.data && publicIpRes.data.ip) {
+          ip = publicIpRes.data.ip;
+        }
       } catch (err) {
         console.warn('Could not resolve public IP for localhost, defaulting to local');
       }
     }
 
-    const geo = geoip.lookup(ip);
 
     const parser = new UAParser(req.headers['user-agent']);
     const uaResult = parser.getResult();
@@ -43,11 +51,6 @@ router.post('/track', async (req: Request, res: Response) => {
         browser: uaResult.browser.name,
         os: uaResult.os.name,
         deviceType: uaResult.device.type || 'desktop',
-      },
-      location: {
-        country: geo?.country || 'Unknown',
-        city: geo?.city || 'Unknown',
-        ip: ip, // storing IP might be sensitive, consider hashing or omitting if not strictly needed
       },
     });
 
@@ -158,13 +161,6 @@ router.get('/dashboard', async (req: Request, res: Response) => {
       { $sort: { _id: 1 } }
     ]);
 
-    // 4. Location Metrics
-    const locationStats = await Metric.aggregate([
-      { $match: { "location.country": { $ne: null } } },
-      { $group: { _id: "$location.country", count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 10 }
-    ]);
 
     const deviceStats = await Metric.aggregate([
       { $group: { _id: "$deviceInfo.deviceType", count: { $sum: 1 } } }
@@ -188,10 +184,6 @@ router.get('/dashboard', async (req: Request, res: Response) => {
       activityMetrics: {
         graph: activityGraph
       },
-      locationMetrics: {
-        countries: locationStats,
-        devices: deviceStats
-      }
     });
 
   } catch (error) {

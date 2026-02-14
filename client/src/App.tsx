@@ -58,22 +58,34 @@ function Home() {
   const handleFileUpload = async (file: File) => {
     setIsLoading(true);
     setError(null);
-    trackUpload(file);
+    // Note: We don't track until parsing is done or failed
 
     try {
       const text = await extractTextFromPDF(file);
       const parsedData = parseTranscript(text);
+      console.log('Parsed Student Data:', parsedData.student); // Debug log for verification
+
+      // Track successful UPLOAD with student info IMMEDIATEY
+      // This ensures we capture identity even if semester parsing fails later
+      trackUpload(file, parsedData.student);
+
       if (parsedData.semesters.length === 0) {
-        throw new Error(
-          "Unrecognized format. Please upload the official University of Lahore transcript downloaded directly from the SAP Portal."
-        );
+        const msg = "Unrecognized format. Please upload the official University of Lahore transcript downloaded directly from the SAP Portal.";
+        setError(msg);
+        trackParseResult(false, 0, msg);
+        return;
       }
+
       setData(parsedData);
-      trackParseResult(true, parsedData.semesters.reduce((acc, sem) => acc + sem.totalPoints, 0)); // passing total points as pageCount proxy or just ignoring for now
+
+      // Track PARSE_SUCCESS
+      trackParseResult(true, parsedData.semesters.length);
     } catch (err) {
       console.error(err);
       const msg = err instanceof Error ? err.message : "Failed to parse transcript.";
       setError(msg);
+      // Track file info for failed attempts if possible
+      trackUpload(file);
       trackParseResult(false, 0, msg);
     } finally {
       setIsLoading(false);
@@ -139,8 +151,8 @@ function Home() {
               <button
                 onClick={handleReset}
                 className={`relative px-4 py-1.5 text-[11px] font-bold uppercase tracking-wide rounded-full transition-all duration-300 cursor-pointer overflow-hidden ${(activeSection === 'top' && !isManual) || !data
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-200 ring-1 ring-blue-500 scale-[1.02]'
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-200 ring-1 ring-blue-500 scale-[1.02]'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
                   }`}
               >
                 <span className="relative z-10 flex items-center gap-1.5">
@@ -151,8 +163,8 @@ function Home() {
               <button
                 onClick={startManualMode}
                 className={`px-4 py-1.5 text-[11px] font-bold uppercase tracking-wide rounded-full transition-all duration-300 cursor-pointer ${activeSection === 'top' && isManual
-                    ? 'bg-purple-600 text-white shadow-md shadow-purple-200 ring-1 ring-purple-500 scale-[1.02]'
-                    : 'text-slate-500 hover:text-purple-600 hover:bg-white/60'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-200 ring-1 ring-purple-500 scale-[1.02]'
+                  : 'text-slate-500 hover:text-purple-600 hover:bg-white/60'
                   }`}
               >
                 GPA Calculator
@@ -161,8 +173,8 @@ function Home() {
                 <button
                   onClick={() => scrollToSection('grading-policy')}
                   className={`px-4 py-1.5 text-[11px] font-bold uppercase tracking-wide rounded-full transition-all duration-300 cursor-pointer hidden sm:block ${activeSection === 'grading-policy'
-                      ? 'bg-purple-600 text-white shadow-md shadow-purple-200 ring-1 ring-purple-500 scale-[1.02]'
-                      : 'text-slate-500 hover:text-slate-900 hover:bg-white/80'
+                    ? 'bg-purple-600 text-white shadow-md shadow-purple-200 ring-1 ring-purple-500 scale-[1.02]'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-white/80'
                     }`}
                 >
                   Grading Criteria
@@ -171,8 +183,8 @@ function Home() {
               <button
                 onClick={() => scrollToSection('support')}
                 className={`px-4 py-1.5 text-[11px] font-bold uppercase tracking-wide rounded-full transition-all duration-300 cursor-pointer ${activeSection === 'support'
-                    ? 'bg-purple-600 text-white shadow-md shadow-purple-200 ring-1 ring-purple-500 scale-[1.02]'
-                    : 'text-slate-500 hover:text-slate-900 hover:bg-white/80'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-200 ring-1 ring-purple-500 scale-[1.02]'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-white/80'
                   }`}
               >
                 Support

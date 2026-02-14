@@ -57,10 +57,30 @@ TransGPA follows a strictly **Client-Side** architecture.
    npm install
    ```
 
-3. **Start the development server**
+3. **Environment Setup**
+   - Rename `.env.example` to `.env` in the root directory.
+   - Add your MongoDB connection string.
+
+### 🚀 Running the Application
+
+Open two terminal windows in the project root:
+
+1. **Start Backend Server** (Terminal A)
+   ```bash
+   npm run server
+   ```
+   Runs on `http://localhost:5000`
+
+2. **Start Frontend Client** (Terminal B)
    ```bash
    npm run dev
    ```
+   Runs on `http://localhost:5173`
+
+### 🛠️ Troubleshooting & Local Config
+- **API Connection**: For local development, keep `VITE_API_URL` blank in your `.env` file. This allows the Vite proxy to handle requests correctly and prevents `ERR_CONNECTION_REFUSED`.
+- **Database**: Ensure your `MONGO_URI` in `.env` is a valid connection string starting with `mongodb://` or `mongodb+srv://`.
+- **Environment**: Always run commands from the project root to ensure `.env` variables are loaded correctly by both the client and server.
 
 4. **Build for production**
    ```bash

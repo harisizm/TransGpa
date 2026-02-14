@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
 import { getAdminAnalytics, getPaginatedUploads, getReportData } from '../services/api';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  PieChart, Pie, Cell
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
-import { Users, Upload, Activity, MapPin, Clock, FileText, Download, Eye, EyeOff } from 'lucide-react';
+import { Users, Upload, Activity, Clock, FileText, Download, Eye, EyeOff } from 'lucide-react';
+import { cn } from '../utils/cn';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
 interface AnalyticsData {
   kpi: {
@@ -29,10 +28,17 @@ interface AnalyticsData {
       _id: string;
       userId: string;
       timestamp: string;
-      metadata: { fileType: string; fileName?: string; fileSize: number; pageCount?: number };
-      location?: { country?: string };
+      metadata: {
+        fileType: string;
+        fileName?: string;
+        fileSize: number;
+        pageCount?: number;
+        studentName?: string;
+        fatherName?: string;
+        studentNo?: string;
+        cgpa?: string;
+      };
     }>;
-    topCountries: Array<{ _id: string; users: number }>;
   };
 }
 
@@ -46,8 +52,15 @@ export const AdminDashboard = () => {
   // Table State
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
   const [sortField, setSortField] = useState('timestamp');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Developer / Delete Mode State
+  const [isDeleteMode, setIsDeleteMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [cascadeDelete, setCascadeDelete] = useState(false);
 
   // Auth State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -76,7 +89,7 @@ export const AdminDashboard = () => {
       try {
         const res = await getPaginatedUploads({
           page,
-          limit: 10,
+          limit,
           search,
           sortBy: sortField,
           sortOrder
@@ -90,7 +103,80 @@ export const AdminDashboard = () => {
     // Debounce search
     const timer = setTimeout(fetchUploads, 300);
     return () => clearTimeout(timer);
-  }, [page, search, sortField, sortOrder, isAuthenticated]);
+  }, [page, limit, search, sortField, sortOrder, isAuthenticated]);
+
+  // Selection Logic
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      const allIds = uploads.map(u => u._id);
+      setSelectedIds(new Set(allIds));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  const handleSelect = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    setShowDeleteConfirm(true);
+  };
+
+  const executeDelete = async () => {
+
+    try {
+      setLoading(true);
+      const { deleteUploads } = await import('../services/api'); // Dynamic import to avoid circular dep issues if any
+      await deleteUploads(Array.from(selectedIds), cascadeDelete);
+
+      // Reset and refresh
+      setSelectedIds(new Set());
+      setIsDeleteMode(false);
+      setCascadeDelete(false); // Reset cascade
+
+      // Force refresh (re-fetch uploads)
+      const res = await getPaginatedUploads({ page, limit, search, sortBy: sortField, sortOrder });
+      setUploads(res.data);
+      setPagination(res.pagination);
+
+      // Refresh analytics too
+      const analytics = await getAdminAnalytics();
+      setData(analytics);
+
+      setShowDeleteConfirm(false);
+    } catch (err) {
+      console.error('Delete failed', err);
+      alert('Failed to delete records. Check console.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCleanupOrphans = async () => {
+    if (!window.confirm("⚠️ CLEANUP ORPHANS\n\nThis will remove ALL data for users who have 0 uploads (e.g., visitors or users whose records you just deleted).\n\nThis will fix your 'Total Users' count.\n\nProceed?")) {
+      return;
+    }
+    try {
+      setLoading(true);
+      const { cleanupOrphans } = await import('../services/api');
+      const res = await cleanupOrphans();
+      alert(res.message);
+      window.location.reload(); // Hard refresh to update everything
+    } catch (err) {
+      console.error('Cleanup failed', err);
+      alert('Failed to cleanup orphans.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
 
   const handleLogin = (e: React.FormEvent) => {
@@ -238,19 +324,6 @@ export const AdminDashboard = () => {
         styles: { fontSize: 12 }
       });
 
-      // Locations
-      const finalY = (doc as any).lastAutoTable.finalY + 15;
-      doc.text("Top User Locations", 14, finalY);
-
-      const locData = data.locations.map((l: any) => [l._id, l.users]);
-      autoTable(doc, {
-        startY: finalY + 5,
-        head: [['Country', 'Users']],
-        body: locData,
-        theme: 'grid',
-        headStyles: { fillColor: [16, 185, 129] }
-      });
-
       // Daily Breakdown
       const dailyY = (doc as any).lastAutoTable.finalY + 15;
       doc.text("Daily Activity Breakdown", 14, dailyY);
@@ -322,7 +395,7 @@ export const AdminDashboard = () => {
     );
   }
 
-  const { kpi, charts, tables } = data;
+  const { kpi, charts } = data;
 
   // Transform Parsing Data for Stacked Bar Chart
   const parsingChartData = charts.parsing.reduce((acc: any[], curr) => {
@@ -367,6 +440,56 @@ export const AdminDashboard = () => {
             </div>
           </div>
         </div>
+
+        {/* Developer Options Section (Red Warning Style) */}
+        {isAuthenticated && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-6">
+            <div>
+              <h3 className="text-red-800 font-bold text-sm flex items-center gap-2">
+                <span className="w-2 h-2 bg-red-600 rounded-full animate-pulse"></span>
+                Developer Zone
+              </h3>
+              <p className="text-red-600 text-xs mt-1">Advanced actions. Proceed with caution.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              {isDeleteMode && (
+                <span className="text-xs font-bold text-red-700">
+                  {selectedIds.size} Selected
+                </span>
+              )}
+              {isDeleteMode && selectedIds.size > 0 && (
+                <button
+                  onClick={handleDeleteSelected}
+                  className="bg-red-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-red-700 transition-colors shadow-sm"
+                >
+                  DELETE SELECTED
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setIsDeleteMode(!isDeleteMode);
+                  setSelectedIds(new Set()); // Clear selection on toggle
+                }}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                  isDeleteMode
+                    ? "bg-slate-800 text-white border-slate-800"
+                    : "bg-white text-red-700 border-red-200 hover:bg-red-100"
+                )}
+              >
+                {isDeleteMode ? 'Cancel Delete Mode' : 'Remove Test Records'}
+              </button>
+
+              <button
+                onClick={handleCleanupOrphans}
+                className="px-4 py-2 bg-white border border-orange-200 text-orange-600 rounded-lg text-xs font-bold hover:bg-orange-50 transition-colors"
+                title="Fix stats for deleted users"
+              >
+                Cleanup Orphans
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Report Modal */}
         {showReportModal && (
@@ -459,11 +582,12 @@ export const AdminDashboard = () => {
           <KPICard title="Avg Uploads/Sess" value={kpi.avgUploadsPerSession} icon={<FileText className="w-4 h-4 text-teal-600" />} desc="Mean uploads per session" />
         </div>
 
+
         {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* DAU Trend */}
           <ChartContainer title="Daily Active Users (30 Days)" desc="Distinct users per day">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <BarChart data={charts.dau} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="_id" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
@@ -476,7 +600,7 @@ export const AdminDashboard = () => {
 
           {/* Parsing Health */}
           <ChartContainer title="Parsing Success vs Failure (30 Days)" desc="Daily event counts">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <BarChart data={parsingChartData} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="day" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
@@ -490,12 +614,10 @@ export const AdminDashboard = () => {
           </ChartContainer>
         </div>
 
-        {/* Data Tables & Distributions */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-          {/* Paginated Uploads Table */}
-          <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        {/* Paginated Uploads Table - Full Width */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+          <div className="p-6 border-b border-slate-100 flex flex-col gap-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h3 className="font-bold text-slate-800">Global Uploads Database</h3>
                 <p className="text-xs text-slate-500 mt-1">Searchable archive of all processing events</p>
@@ -514,41 +636,116 @@ export const AdminDashboard = () => {
               </div>
             </div>
 
-            <div className="overflow-x-auto flex-1">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-100">
-                  <tr>
-                    <th className="px-6 py-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('userId')}>
-                      User ID {sortField === 'userId' && (sortOrder === 'asc' ? '↑' : '↓')}
+            {/* Pagination Controls Row */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100 text-sm text-slate-600">
+              <div className="flex items-center gap-6">
+                <div className="font-medium text-xs sm:text-sm">
+                  Page <span className="text-slate-900 font-bold">{pagination.page}</span> of <span className="text-slate-900 font-bold">{pagination.pages}</span>
+                  <span className="text-slate-400 ml-1">({pagination.total} total)</span>
+                </div>
+                <div className="flex items-center gap-2 border-l border-slate-200 pl-6">
+                  <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-tighter sm:tracking-normal">Show:</label>
+                  <select
+                    value={limit}
+                    onChange={(e) => {
+                      setLimit(Number(e.target.value));
+                      setPage(1);
+                    }}
+                    className="bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {[10, 20, 50, 100].map(l => (
+                      <option key={l} value={l}>{l}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={pagination.page === 1}
+                  className="px-3 py-1.5 sm:px-4 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-slate-700 transition-all shadow-sm text-xs sm:text-sm"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
+                  disabled={pagination.page >= pagination.pages}
+                  className="px-3 py-1.5 sm:px-4 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-slate-700 transition-all shadow-sm text-xs sm:text-sm"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-100">
+                <tr>
+                  {isDeleteMode && (
+                    <th className="px-6 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                        onChange={handleSelectAll}
+                        checked={uploads.length > 0 && selectedIds.size === uploads.length}
+                      />
                     </th>
-                    <th className="px-6 py-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('metadata.fileName')}>
-                      File Name {sortField === 'metadata.fileName' && (sortOrder === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="px-6 py-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('metadata.fileSize')}>
-                      Size/Type {sortField === 'metadata.fileSize' && (sortOrder === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="px-6 py-3">Location</th>
-                    <th className="px-6 py-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('timestamp')}>
-                      Time {sortField === 'timestamp' && (sortOrder === 'asc' ? '↑' : '↓')}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {uploads.map((upload) => (
-                    <tr key={upload._id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-3 font-mono text-xs text-slate-600 truncate max-w-[100px]" title={upload.userId}>
-                        {upload.userId.substring(0, 8)}...
-                      </td>
-                      <td className="px-6 py-3 font-medium text-slate-800 text-sm truncate max-w-[150px]" title={upload.metadata?.fileName}>
-                        {upload.metadata?.fileName || 'Untitled.pdf'}
-                      </td>
+                  )}
+                  <th className="px-6 py-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('metadata.studentName')}>
+                    Student {sortField === 'metadata.studentName' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th className="px-6 py-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('metadata.fatherName')}>
+                    Father's Name {sortField === 'metadata.fatherName' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th className="px-6 py-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('metadata.studentNo')}>
+                    ID {sortField === 'metadata.studentNo' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th className="px-6 py-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('metadata.fileName')}>
+                    File Name {sortField === 'metadata.fileName' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th className="px-6 py-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('metadata.cgpa')}>
+                    CGPA {sortField === 'metadata.cgpa' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th className="px-6 py-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('timestamp')}>
+                    Time {sortField === 'timestamp' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {uploads.map((upload) => (
+                  <tr key={upload._id} className="hover:bg-slate-50/50 transition-colors">
+                    {isDeleteMode && (
                       <td className="px-6 py-3">
-                        <div className="text-xs text-slate-500">{upload.metadata?.fileType || 'Unknown'}</div>
-                        <div className="text-xs text-slate-400">{(upload.metadata?.fileSize / 1024).toFixed(1)} KB</div>
+                        <input
+                          type="checkbox"
+                          className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                          checked={selectedIds.has(upload._id)}
+                          onChange={() => handleSelect(upload._id)}
+                        />
                       </td>
-                      <td className="px-6 py-3 text-slate-600">
-                        {upload.location?.country || 'Unknown'}
-                      </td>
+                    )}
+                    <td className="px-6 py-3 font-medium text-slate-900 text-sm truncate max-w-[120px]" title={upload.metadata?.studentName}>
+                      {upload.metadata?.studentName || 'Guest'}
+                    </td>
+                    <td className="px-6 py-3 text-slate-500 text-xs truncate max-w-[120px]" title={upload.metadata?.fatherName}>
+                      {upload.metadata?.fatherName || '-'}
+                    </td>
+                    <td className="px-6 py-3 font-mono text-xs text-slate-600">
+                      {upload.metadata?.studentNo || 'N/A'}
+                    </td>
+                    <td className="px-6 py-3 text-slate-500 text-xs truncate max-w-[150px]" title={upload.metadata?.fileName}>
+                      {upload.metadata?.fileName || 'Untitled.pdf'}
+                    </td>
+                    <td className="px-6 py-3">
+                      <span className={cn(
+                        "px-2 py-0.5 rounded text-xs font-bold",
+                        (parseFloat(upload.metadata?.cgpa || '0')) < 2.0 ? "text-red-700 bg-red-50" : "text-green-700 bg-green-50"
+                      )}>
+                        {upload.metadata?.cgpa || '0.00'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3 text-slate-500 text-xs">
                       {new Date(upload.timestamp).toLocaleString('en-US', {
                         year: 'numeric',
                         month: 'short',
@@ -557,92 +754,59 @@ export const AdminDashboard = () => {
                         minute: 'numeric',
                         hour12: true
                       })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {uploads.length === 0 && (
-                <div className="p-8 text-center text-slate-400 text-sm">No uploads match your search.</div>
-              )}
-            </div>
-
-            {/* Pagination Controls */}
-            <div className="p-4 border-t border-slate-100 flex items-center justify-between text-sm text-slate-500">
-              <span>Page {pagination.page} of {pagination.pages} ({pagination.total} total)</span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={pagination.page === 1}
-                  className="px-3 py-1 border rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Previous
-                </button>
-                <button
-                  onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
-                  disabled={pagination.page >= pagination.pages}
-                  className="px-3 py-1 border rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Top Locations & File Types */}
-          <div className="space-y-8">
-
-            {/* Top Countries */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-slate-400" /> Top Countries
-              </h3>
-              <div className="space-y-3">
-                {tables.topCountries.map((country, idx) => (
-                  <div key={country._id} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-3">
-                      <span className="text-slate-400 font-mono text-xs w-4">{idx + 1}</span>
-                      <span className="font-medium text-slate-700">{country._id || 'Unknown'}</span>
-                    </div>
-                    <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md text-xs">{country.users} users</span>
-                  </div>
+                    </td>
+                  </tr>
                 ))}
-                {tables.topCountries.length === 0 && <p className="text-slate-400 text-xs">No location data available.</p>}
-              </div>
-            </div>
-
-            {/* File Type Distribution */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <FileText className="w-4 h-4 text-slate-400" /> File Distribution
-              </h3>
-              <div className="h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={charts.fileTypes}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={40}
-                      outerRadius={70}
-                      paddingAngle={5}
-                      dataKey="count"
-                      nameKey="_id"
-                    >
-                      {charts.fileTypes.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Legend wrapperStyle={{ fontSize: '11px' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
+              </tbody>
+            </table>
+            {uploads.length === 0 && (
+              <div className="p-12 text-center text-slate-400 text-sm italic">No uploads found matching your filters.</div>
+            )}
           </div>
         </div>
-
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-[60] backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 transform transition-all scale-100 opacity-100 border border-red-100">
+            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-2xl">⚠️</span>
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 text-center mb-2">Delete {selectedIds.size} Records?</h3>
+            <div className="text-slate-600 text-sm text-center mb-6 space-y-2">
+              <p>This will <strong>permanently remove</strong> these records from the global database.</p>
+              <p>All associated analytics, charts, and reports will be <span className="text-red-600 font-bold">recalculated immediately</span>.</p>
+              <p className="text-xs text-slate-400 mt-2">This action is irreversible.</p>
+
+              <label className="flex items-center justify-center gap-2 mt-4 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={cascadeDelete}
+                  onChange={(e) => setCascadeDelete(e.target.checked)}
+                  className="rounded border-slate-300 text-red-600 focus:ring-red-500"
+                />
+                <span className="text-slate-700 font-medium">Also wipe user history?</span>
+              </label>
+              {cascadeDelete && <p className="text-[10px] text-red-500 mt-1">This reduces 'Total Users' count.</p>}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 px-4 py-2 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeDelete}
+                className="flex-1 px-4 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 shadow-lg shadow-red-200 transition-transform active:scale-95"
+              >
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -660,12 +824,12 @@ const KPICard = ({ title, value, icon, desc }: { title: string, value: string | 
 );
 
 const ChartContainer = ({ title, desc, children }: { title: string, desc: string, children: React.ReactNode }) => (
-  <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col h-80">
+  <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col h-[380px]">
     <div className="mb-6">
       <h3 className="font-bold text-slate-800">{title}</h3>
       <p className="text-xs text-slate-500">{desc}</p>
     </div>
-    <div className="flex-1 w-full min-h-0">
+    <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: 0 }}>
       {children}
     </div>
   </div>

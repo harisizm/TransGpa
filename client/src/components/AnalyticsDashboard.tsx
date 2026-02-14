@@ -84,8 +84,8 @@ export function AnalyticsDashboard({ semesters }: AnalyticsDashboardProps) {
         {/* 1. GPA Trend Chart */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
           <h3 className="text-xs font-bold text-slate-500 uppercase mb-4 tracking-wider">GPA Trend ({semesters.length} Semesters)</h3>
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-64 w-full relative">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <ComposedChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
                 <defs>
                   <linearGradient id="colorCgpa" x1="0" y1="0" x2="0" y2="1">
@@ -140,8 +140,8 @@ export function AnalyticsDashboard({ semesters }: AnalyticsDashboardProps) {
         {/* 2. Grade Distribution Bar Chart (F -> A) */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
           <h3 className="text-xs font-bold text-slate-500 uppercase mb-4 tracking-wider">Grade Distribution (F to A)</h3>
-          <div className="h-56 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-56 w-full relative">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={gradeDistDataBar} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis
@@ -175,8 +175,8 @@ export function AnalyticsDashboard({ semesters }: AnalyticsDashboardProps) {
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
           <h3 className="text-xs font-bold text-slate-500 uppercase mb-4 tracking-wider">Seasonal Performance (Avg SGPA)</h3>
           <p className="text-[10px] text-slate-400 mb-2">Compare your performance across Fall, Spring, and Summer sessions</p>
-          <div className="h-56 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-56 w-full relative">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={seasonalData} margin={{ top: 10, right: 30, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis
@@ -210,8 +210,8 @@ export function AnalyticsDashboard({ semesters }: AnalyticsDashboardProps) {
         {/* 4. Semester Credit Load */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
           <h3 className="text-xs font-bold text-slate-500 uppercase mb-4 tracking-wider">Semester Credit Load</h3>
-          <div className="h-56 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-56 w-full relative">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis

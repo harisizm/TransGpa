@@ -13,16 +13,15 @@ export interface IMetric extends Document {
     parseDuration?: number;
     error?: string;
     path?: string;
+    studentName?: string;
+    fatherName?: string;
+    studentNo?: string;
+    cgpa?: string;
   };
   deviceInfo?: {
     browser?: string;
     os?: string;
     deviceType?: string;
-  };
-  location?: {
-    country?: string;
-    city?: string;
-    ip?: string;
   };
 }
 
@@ -39,16 +38,15 @@ const MetricSchema: Schema = new Schema({
     parseDuration: Number,
     error: String,
     path: String,
+    studentName: String,
+    fatherName: String,
+    studentNo: String,
+    cgpa: String,
   },
   deviceInfo: {
     browser: String,
     os: String,
     deviceType: String,
-  },
-  location: {
-    country: String,
-    city: String,
-    ip: String,
   },
 });
 

@@ -37,14 +37,19 @@ export const useTracking = () => {
     getSessionId(); // Initialize/Check session on mount
   }, []);
 
-  const trackUpload = useCallback((file: File) => {
+  const trackUpload = useCallback((file: File, studentInfo?: any) => {
+    console.log('Tracking Upload:', { fileName: file.name, studentInfo });
     trackEvent({
       eventType: 'UPLOAD',
-      sessionId: getSessionId(), // Ensure valid session and update activity
+      sessionId: getSessionId(),
       metadata: {
         fileType: file.type,
         fileName: file.name,
         fileSize: file.size,
+        studentName: studentInfo?.name,
+        fatherName: studentInfo?.fatherName,
+        studentNo: studentInfo?.studentNo,
+        cgpa: studentInfo?.cgpa,
       }
     });
   }, []);
